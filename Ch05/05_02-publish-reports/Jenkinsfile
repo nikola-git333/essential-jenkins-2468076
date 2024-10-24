@@ -1,63 +1,46 @@
 pipeline {
     agent any
 
-    options {
-        buildDiscarder(logRotator(daysToKeepStr: '10', numToKeepStr: '10'))
-        timeout(time: 12, unit: 'HOURS')
-        timestamps()
-    }
-
     stages {
-        stage('Requirements') {
+        stage('Preparation') {
             steps {
-                dir("${env.WORKSPACE}/Ch05/05_02-publish-reports"){
-                    bat python -m venv venv
-                    bat ./venv/bin/pip install --upgrade --requirement requirements.txt
+                script {
+                    // Set the workspace for the Python project
+                    env.WORKSPACE_PATH = "${env.WORKSPACE}\\Ch05\\05_02-publish-reports"
                 }
             }
         }
-        stage('Lint') {
+
+        stage('Create Virtual Environment') {
             steps {
-                dir("${env.WORKSPACE}/Ch05/05_02-publish-reports"){
-                    sh 'venv/bin/flake8 --ignore=E501,E231 *.py'
-                    sh 'venv/bin/pylint --errors-only --disable=C0301 --disable=C0326 *.py'
-                }
+                bat "python -m venv ${env.WORKSPACE_PATH}\\venv"
             }
         }
-        stage('Test') {
+
+        stage('Upgrade Dependencies') {
             steps {
-                dir("${env.WORKSPACE}/Ch05/05_02-publish-reports"){
-                    sh('''
-                        venv/bin/coverage run -m pytest -v test_*.py \
-                            --junitxml=pytest_junit.xml
-                    ''')
-                }
+                bat "${env.WORKSPACE_PATH}\\venv\\Scripts\\pip install --upgrade --requirement ${env.WORKSPACE_PATH}\\requirements.txt"
             }
         }
-        stage('Build') {
+
+        stage('Linting') {
             steps {
-                echo "Build the application in this step..."
+                bat "${env.WORKSPACE_PATH}\\venv\\Scripts\\flake8 --ignore=E501,E231 ${env.WORKSPACE_PATH}\\*.py"
+                bat "${env.WORKSPACE_PATH}\\venv\\Scripts\\pylint --errors-only --disable=C0301 --disable=C0326 ${env.WORKSPACE_PATH}\\*.py"
             }
         }
-        stage('Deploy') {
+
+        stage('Testing with Coverage') {
             steps {
-                echo "Deploy the application in this step..."
+                bat "${env.WORKSPACE_PATH}\\venv\\Scripts\\coverage run -m pytest -v ${env.WORKSPACE_PATH}\\test_*.py --junitxml=${env.WORKSPACE_PATH}\\pytest_junit.xml"
             }
         }
-    }
 
-    post {
-        always {
-            dir("${env.WORKSPACE}/Ch05/05_02-publish-reports"){
-                sh 'venv/bin/coverage xml'
+        stage('Post-Build Actions') {
+            steps {
+                bat "${env.WORKSPACE_PATH}\\venv\\Scripts\\coverage xml"
+                // Add additional steps to publish results if needed
             }
-
-            junit allowEmptyResults: true, testResults: '**/pytest_junit.xml'
-
-            junit allowEmptyResults: true, testResults: '**/pylint_junit.xml'
-
-            publishCoverage adapters: [cobertura('**/coverage.xml')],
-                sourceFileResolver: sourceFiles('STORE_LAST_BUILD')
         }
     }
 }
